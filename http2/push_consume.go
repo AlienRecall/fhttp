@@ -8,7 +8,7 @@ import (
 	"errors"
 	"net/url"
 
-	http "github.com/useflyent/fhttp"
+	http "github.com/AlienRecall/fhttp"
 )
 
 var (

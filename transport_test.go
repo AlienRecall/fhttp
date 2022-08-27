@@ -38,12 +38,12 @@ import (
 	"testing/iotest"
 	"time"
 
-	. "github.com/useflyent/fhttp"
-	"github.com/useflyent/fhttp/httptest"
-	"github.com/useflyent/fhttp/httptrace"
-	"github.com/useflyent/fhttp/httputil"
-	"github.com/useflyent/fhttp/internal"
-	"github.com/useflyent/fhttp/internal/nettrace"
+	. "github.com/AlienRecall/fhttp"
+	"github.com/AlienRecall/fhttp/httptest"
+	"github.com/AlienRecall/fhttp/httptrace"
+	"github.com/AlienRecall/fhttp/httputil"
+	"github.com/AlienRecall/fhttp/internal"
+	"github.com/AlienRecall/fhttp/internal/nettrace"
 
 	"golang.org/x/net/http/httpguts"
 )

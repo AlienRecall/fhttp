@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build !go1.11
 // +build !go1.11
 
 package http2
 
 import (
-	"github.com/useflyent/fhttp/httptrace"
+	"github.com/AlienRecall/fhttp/httptrace"
 	"net/textproto"
 )
 

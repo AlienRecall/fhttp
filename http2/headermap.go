@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	http "github.com/useflyent/fhttp"
+	http "github.com/AlienRecall/fhttp"
 )
 
 var (
