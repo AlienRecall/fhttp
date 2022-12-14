@@ -613,14 +613,14 @@ func (r *Request) write(w io.Writer, usingProxy bool, extraHeaders Header, waitF
 		return err
 	}
 
-	if _, ok := r.Header["Host"]; !ok {
-		r.Header.Set("Host", host)
-	}
+	// if _, ok := r.Header["Host"]; !ok {
+	// 	r.Header.Set("Host", host)
+	// }
 
 	// if user agent field is not present, add it
-	if uaCap, uaLow := r.Header["User-Agent"], r.Header["user-agent"]; uaCap == nil && uaLow == nil {
-		r.Header.Set("User-Agent", "Go-http-client/1.1")
-	}
+	// if uaCap, uaLow := r.Header["User-Agent"], r.Header["user-agent"]; uaCap == nil && uaLow == nil {
+	// 	r.Header.Set("User-Agent", "Go-http-client/1.1")
+	// }
 
 	// Process Body,ContentLength,Close,Trailer
 	tw, err := newTransferWriter(r)

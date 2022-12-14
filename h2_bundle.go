@@ -8429,7 +8429,7 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 		}
 
 		// Formats and writes headers with f function
-		var didUA bool
+		//var didUA bool
 		var kvs []HeaderKeyValues
 
 		if headerOrder, ok := hdrs[HeaderOrderKey]; ok {
@@ -8482,7 +8482,8 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 				// User-Agent. If set to nil or empty string,
 				// then omit it. Otherwise if not mentioned,
 				// include the default (below).
-				didUA = true
+				
+				//didUA = true
 				if len(kv.Values) > 1 {
 					kv.Values = kv.Values[:1]
 				}
@@ -8497,9 +8498,9 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 			}
 		}
 
-		if !didUA {
-			f("user-agent", http2defaultUserAgent)
-		}
+		// if !didUA {
+		// 	f("user-agent", http2defaultUserAgent)
+		// }
 	}
 
 	// Do a first pass over the headers counting bytes to ensure
