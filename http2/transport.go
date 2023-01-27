@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +27,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	tls "github.com/refraction-networking/utls"
+
 	http "github.com/AlienRecall/fhttp"
 	"github.com/AlienRecall/fhttp/httptrace"
 
@@ -39,7 +40,7 @@ import (
 const (
 	// transportDefaultConnFlow is how many connection-level flow control
 	// tokens we give the server at start-up, past the default 64k.
-	transportDefaultConnFlow = 15663105 //1 << 30
+	transportDefaultConnFlow = 15663105
 
 	// transportDefaultStreamFlow is how many stream-level flow
 	// control tokens we announce to the peer, and how many bytes
@@ -143,7 +144,6 @@ type Transport struct {
 	connPoolOnce  sync.Once
 	connPoolOrDef ClientConnPool // non-nil version of ConnPool
 
-	// Settings should not include InitialWindowSize or HeaderTableSize, set that in Transport
 	Settings          []Setting
 	InitialWindowSize uint32 // if nil, will use global initialWindowSize
 	HeaderTableSize   uint32 // if nil, will use global initialHeaderTableSize
@@ -207,7 +207,7 @@ func configureTransports(t1 *http.Transport) (*Transport, error) {
 	if !strSliceContains(t1.TLSClientConfig.NextProtos, "http/1.1") {
 		t1.TLSClientConfig.NextProtos = append(t1.TLSClientConfig.NextProtos, "http/1.1")
 	}
-	upgradeFn := func(authority string, c *tls.Conn) http.RoundTripper {
+	upgradeFn := func(authority string, c *tls.UConn) http.RoundTripper {
 		addr := authorityAddr("https", authority)
 		if used, err := connPool.addConnIfNeeded(addr, t2, c); err != nil {
 			go c.Close()
@@ -222,7 +222,7 @@ func configureTransports(t1 *http.Transport) (*Transport, error) {
 		return t2
 	}
 	if m := t1.TLSNextProto; len(m) == 0 {
-		t1.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{
+		t1.TLSNextProto = map[string]func(string, *tls.UConn) http.RoundTripper{
 			"h2": upgradeFn,
 		}
 	} else {
@@ -555,10 +555,10 @@ func (t *Transport) CloseIdleConnections() {
 }
 
 var (
-	errClientConnClosed    = errors.New("http2: client conn is closed")
-	errClientConnUnusable  = errors.New("http2: client conn not usable")
-	errClientConnGotGoAway = errors.New("http2: Transport received Server's graceful shutdown GOAWAY")
-	//errSettingsIncludeIllegalSettings = errors.New("http2: Settings contains either SettingInitialWindowSize or SettingHeaderTableSize, which should be specified in transport instead")
+	errClientConnClosed               = errors.New("http2: client conn is closed")
+	errClientConnUnusable             = errors.New("http2: client conn not usable")
+	errClientConnGotGoAway            = errors.New("http2: Transport received Server's graceful shutdown GOAWAY")
+	errSettingsIncludeIllegalSettings = errors.New("http2: Settings contains either SettingInitialWindowSize or SettingHeaderTableSize, which should be specified in transport instead")
 )
 
 // shouldRetryRequest is called by RoundTrip when a request fails to get
@@ -1304,9 +1304,8 @@ func (cc *ClientConn) writeHeaders(streamID uint32, endStream bool, maxFrameSize
 				EndStream:     endStream,
 				EndHeaders:    endHeaders,
 				Priority: PriorityParam{
-					Weight:    255,
-					StreamDep: 0,
 					Exclusive: true,
+					Weight:    255,
 				},
 			})
 			first = false
@@ -1324,8 +1323,9 @@ func (cc *ClientConn) writeHeaders(streamID uint32, endStream bool, maxFrameSize
 
 func (cc *ClientConn) requestGzip(req *http.Request) bool {
 	// TODO(bradfitz): this is a copy of the logic in net/http. Unify somewhere?
+	encoding := req.Header.Get("Accept-Encoding")
 	if !cc.t.disableCompression() &&
-		req.Header.Get("Accept-Encoding") == "" &&
+		(encoding == "" || strings.Contains(encoding, "gzip")) &&
 		req.Header.Get("Range") == "" &&
 		req.Method != "HEAD" {
 		// Request gzip only, not deflate. Deflate is ambiguous and
@@ -1626,7 +1626,8 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 		}
 
 		// Formats and writes headers with f function
-		//var didUA bool
+
+		// var didUA bool
 		var kvs []http.HeaderKeyValues
 
 		if headerOrder, ok := hdrs[http.HeaderOrderKey]; ok {
@@ -1680,7 +1681,7 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 				// then omit it. Otherwise if not mentioned,
 				// include the default (below).
 
-				//didUA = true
+				// didUA = true
 				if len(kv.Values) > 1 {
 					kv.Values = kv.Values[:1]
 				}
@@ -2689,7 +2690,6 @@ func (cc *ClientConn) writeStreamReset(streamID uint32, code ErrCode, err error)
 	// RST_STREAM there's no equivalent to GOAWAY frame's debug
 	// data, and the error codes are all pretty vague ("cancel").
 	cc.wmu.Lock()
-	fmt.Printf("reset err %v StreamID: %v\n", code, streamID)
 	cc.fr.WriteRSTStream(streamID, code)
 	cc.bw.Flush()
 	cc.wmu.Unlock()

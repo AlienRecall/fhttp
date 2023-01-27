@@ -2,7 +2,7 @@ package http2_test
 
 import (
 	"bytes"
-	"crypto/tls"
+	gtls "crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/AlienRecall/fhttp/cookiejar"
 	"github.com/AlienRecall/fhttp/httptest"
+	tls "github.com/refraction-networking/utls"
 	"golang.org/x/net/publicsuffix"
 
 	http "github.com/AlienRecall/fhttp"
@@ -215,7 +216,7 @@ func TestGClient_Load(t *testing.T) {
 		Transport: &ghttp.Transport{
 			ForceAttemptHTTP2: true,
 			Proxy:             ghttp.ProxyURL(u),
-			TLSClientConfig: &tls.Config{
+			TLSClientConfig: &gtls.Config{
 				RootCAs: pool,
 			},
 		},

@@ -15,7 +15,6 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
 	"errors"
@@ -37,6 +36,8 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
+
+	tls "github.com/refraction-networking/utls"
 
 	. "github.com/AlienRecall/fhttp"
 	"github.com/AlienRecall/fhttp/httptest"
@@ -3428,6 +3429,7 @@ func (c writerFuncConn) Write(p []byte) (n int, err error) { return c.write(p) }
 //   - we reused a keep-alive connection
 //   - we haven't yet received any header data
 //   - either we wrote no bytes to the server, or the request is idempotent
+//
 // This automatically prevents an infinite resend loop because we'll run out of
 // the cached keep-alive connections eventually.
 func TestRetryRequestsOnError(t *testing.T) {
@@ -4207,7 +4209,7 @@ func TestTransportAutomaticHTTP2_DefaultTransport(t *testing.T) {
 
 func TestTransportAutomaticHTTP2_TLSNextProto(t *testing.T) {
 	testTransportAutoHTTP(t, &Transport{
-		TLSNextProto: make(map[string]func(string, *tls.Conn) RoundTripper),
+		TLSNextProto: make(map[string]func(string, *tls.UConn) RoundTripper),
 	}, false)
 }
 
@@ -4315,7 +4317,7 @@ func TestNoCrashReturningTransportAltConn(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if err := sc.(*tls.Conn).Handshake(); err != nil {
+		if err := sc.(*tls.UConn).Handshake(); err != nil {
 			t.Error(err)
 			return
 		}
@@ -4334,8 +4336,8 @@ func TestNoCrashReturningTransportAltConn(t *testing.T) {
 
 	tr := &Transport{
 		DisableKeepAlives: true,
-		TLSNextProto: map[string]func(string, *tls.Conn) RoundTripper{
-			"foo": func(authority string, c *tls.Conn) RoundTripper {
+		TLSNextProto: map[string]func(string, *tls.UConn) RoundTripper{
+			"foo": func(authority string, c *tls.UConn) RoundTripper {
 				madeRoundTripper <- true
 				return funcRoundTripper(func() {
 					t.Error("foo RoundTripper should not be called")
@@ -5894,8 +5896,8 @@ func TestTransportClone(t *testing.T) {
 		GetProxyConnectHeader:  func(context.Context, *url.URL, string) (Header, error) { return nil, nil },
 		MaxResponseHeaderBytes: 1,
 		ForceAttemptHTTP2:      true,
-		TLSNextProto: map[string]func(authority string, c *tls.Conn) RoundTripper{
-			"foo": func(authority string, c *tls.Conn) RoundTripper { panic("") },
+		TLSNextProto: map[string]func(authority string, c *tls.UConn) RoundTripper{
+			"foo": func(authority string, c *tls.UConn) RoundTripper { panic("") },
 		},
 		ReadBufferSize:  1,
 		WriteBufferSize: 1,

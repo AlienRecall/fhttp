@@ -29,7 +29,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -45,6 +44,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	tls "github.com/refraction-networking/utls"
 
 	http "github.com/AlienRecall/fhttp"
 	"github.com/AlienRecall/fhttp/http2/hpack"
@@ -278,9 +279,9 @@ func ConfigureServer(s *http.Server, conf *Server) error {
 	}
 
 	if s.TLSNextProto == nil {
-		s.TLSNextProto = map[string]func(*http.Server, *tls.Conn, http.Handler){}
+		s.TLSNextProto = map[string]func(*http.Server, *tls.UConn, http.Handler){}
 	}
-	protoHandler := func(hs *http.Server, c *tls.Conn, h http.Handler) {
+	protoHandler := func(hs *http.Server, c *tls.UConn, h http.Handler) {
 		if testHookOnConn != nil {
 			testHookOnConn()
 		}
@@ -2515,8 +2516,9 @@ func (rws *responseWriterState) writeChunk(p []byte) (n int, err error) {
 // prior to the headers being written. If the set of trailers is fixed
 // or known before the header is written, the normal Go trailers mechanism
 // is preferred:
-//    https://golang.org/pkg/net/http/#ResponseWriter
-//    https://golang.org/pkg/net/http/#example_ResponseWriter_trailers
+//
+//	https://golang.org/pkg/net/http/#ResponseWriter
+//	https://golang.org/pkg/net/http/#example_ResponseWriter_trailers
 const TrailerPrefix = "Trailer:"
 
 // promoteUndeclaredTrailers permits http.Handlers to set trailers

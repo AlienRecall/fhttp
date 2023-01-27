@@ -25,7 +25,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/tls"
+	tls "github.com/refraction-networking/utls"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -828,7 +828,7 @@ func (c *http2dialCall) dial(addr string) {
 // This code decides which ones live or die.
 // The return value used is whether c was used.
 // c is never closed.
-func (p *http2clientConnPool) addConnIfNeeded(key string, t *http2Transport, c *tls.Conn) (used bool, err error) {
+func (p *http2clientConnPool) addConnIfNeeded(key string, t *http2Transport, c *tls.UConn) (used bool, err error) {
 	p.mu.Lock()
 	for _, cc := range p.conns[key] {
 		if cc.CanTakeNewRequest() {
@@ -864,7 +864,7 @@ type http2addConnCall struct {
 	err  error
 }
 
-func (c *http2addConnCall) run(t *http2Transport, key string, tc *tls.Conn) {
+func (c *http2addConnCall) run(t *http2Transport, key string, tc *tls.UConn) {
 	cc, err := t.NewClientConn(tc)
 
 	p := c.p
@@ -4101,9 +4101,9 @@ func http2ConfigureServer(s *Server, conf *http2Server) error {
 	}
 
 	if s.TLSNextProto == nil {
-		s.TLSNextProto = map[string]func(*Server, *tls.Conn, Handler){}
+		s.TLSNextProto = map[string]func(*Server, *tls.UConn, Handler){}
 	}
-	protoHandler := func(hs *Server, c *tls.Conn, h Handler) {
+	protoHandler := func(hs *Server, c *tls.UConn, h Handler) {
 		if http2testHookOnConn != nil {
 			http2testHookOnConn()
 		}
@@ -6980,7 +6980,7 @@ func http2configureTransports(t1 *Transport) (*http2Transport, error) {
 	if !http2strSliceContains(t1.TLSClientConfig.NextProtos, "http/1.1") {
 		t1.TLSClientConfig.NextProtos = append(t1.TLSClientConfig.NextProtos, "http/1.1")
 	}
-	upgradeFn := func(authority string, c *tls.Conn) RoundTripper {
+	upgradeFn := func(authority string, c *tls.UConn) RoundTripper {
 		addr := http2authorityAddr("https", authority)
 		if used, err := connPool.addConnIfNeeded(addr, t2, c); err != nil {
 			go c.Close()
@@ -6995,7 +6995,7 @@ func http2configureTransports(t1 *Transport) (*http2Transport, error) {
 		return t2
 	}
 	if m := t1.TLSNextProto; len(m) == 0 {
-		t1.TLSNextProto = map[string]func(string, *tls.Conn) RoundTripper{
+		t1.TLSNextProto = map[string]func(string, *tls.UConn) RoundTripper{
 			"h2": upgradeFn,
 		}
 	} else {
@@ -8127,8 +8127,9 @@ func (cc *http2ClientConn) writeHeaders(streamID uint32, endStream bool, maxFram
 
 func (cc *http2ClientConn) requestGzip(req *Request) bool {
 	// TODO(bradfitz): this is a copy of the logic in net/http. Unify somewhere?
+	encoding := req.Header.Get("Accept-Encoding")
 	if !cc.t.disableCompression() &&
-		req.Header.Get("Accept-Encoding") == "" &&
+		(encoding == "" || strings.Contains(encoding, "gzip")) &&
 		req.Header.Get("Range") == "" &&
 		req.Method != "HEAD" {
 		// Request gzip only, not deflate. Deflate is ambiguous and
@@ -8429,7 +8430,8 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 		}
 
 		// Formats and writes headers with f function
-		//var didUA bool
+		
+		// var didUA bool
 		var kvs []HeaderKeyValues
 
 		if headerOrder, ok := hdrs[HeaderOrderKey]; ok {
@@ -8483,7 +8485,7 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 				// then omit it. Otherwise if not mentioned,
 				// include the default (below).
 				
-				//didUA = true
+				// didUA = true
 				if len(kv.Values) > 1 {
 					kv.Values = kv.Values[:1]
 				}
@@ -9492,7 +9494,6 @@ func (cc *http2ClientConn) writeStreamReset(streamID uint32, code http2ErrCode, 
 	// RST_STREAM there's no equivalent to GOAWAY frame's debug
 	// data, and the error codes are all pretty vague ("cancel").
 	cc.wmu.Lock()
-	fmt.Printf("reset err %v StreamID: %v\n", code, streamID)
 	cc.fr.WriteRSTStream(streamID, code)
 	cc.bw.Flush()
 	cc.wmu.Unlock()

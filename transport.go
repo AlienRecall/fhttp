@@ -17,7 +17,6 @@ import (
 	"compress/zlib"
 	"container/list"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -33,6 +32,7 @@ import (
 	"time"
 
 	"github.com/andybalholm/brotli"
+	tls "github.com/refraction-networking/utls"
 
 	"github.com/AlienRecall/fhttp/httptrace"
 
@@ -46,7 +46,7 @@ import (
 // as directed by the $HTTP_PROXY and $NO_PROXY (or $http_proxy and
 // $no_proxy) environment variables.
 var DefaultTransport RoundTripper = &Transport{
-	Proxy: nil,
+	//Proxy: ProxyFromEnvironment,
 	DialContext: (&net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
@@ -168,10 +168,15 @@ type Transport struct {
 	DialTLS func(network, addr string) (net.Conn, error)
 
 	// TLSClientConfig specifies the TLS configuration to use with
-	// tls.Client.
+	// tls.UClient.
 	// If nil, the default configuration is used.
 	// If non-nil, HTTP/2 support may not be enabled by default.
 	TLSClientConfig *tls.Config
+
+	// GetTlsClientHelloSpec returns the TLS spec to use with
+	// tls.UClient.
+	// If nil, the default configuration is used.
+	GetTlsClientHelloSpec func() *tls.ClientHelloSpec
 
 	// TLSHandshakeTimeout specifies the maximum amount of time waiting to
 	// wait for a TLS handshake. Zero means no timeout.
@@ -241,7 +246,7 @@ type Transport struct {
 	// must return a RoundTripper that then handles the request.
 	// If TLSNextProto is not nil, HTTP/2 support is not enabled
 	// automatically.
-	TLSNextProto map[string]func(authority string, c *tls.Conn) RoundTripper
+	TLSNextProto map[string]func(authority string, c *tls.UConn) RoundTripper
 
 	// ProxyConnectHeader optionally specifies headers to send to
 	// proxies during CONNECT requests.
@@ -338,7 +343,7 @@ func (t *Transport) Clone() *Transport {
 		t2.TLSClientConfig = t.TLSClientConfig.Clone()
 	}
 	if !t.tlsNextProtoWasNil {
-		npm := map[string]func(authority string, c *tls.Conn) RoundTripper{}
+		npm := map[string]func(authority string, c *tls.UConn) RoundTripper{}
 		for k, v := range t.TLSNextProto {
 			npm[k] = v
 		}
@@ -1515,7 +1520,17 @@ func (pconn *persistConn) addTLS(name string, trace *httptrace.ClientTrace) erro
 		cfg.NextProtos = nil
 	}
 	plainConn := pconn.conn
-	tlsConn := tls.Client(plainConn, cfg)
+	var tlsConn *tls.UConn
+
+	if pconn.t.GetTlsClientHelloSpec != nil {
+		tlsConn = tls.UClient(plainConn, cfg, tls.HelloCustom)
+		if err := tlsConn.ApplyPreset(pconn.t.GetTlsClientHelloSpec()); err != nil {
+			return err
+		}
+	} else {
+		tlsConn = tls.UClient(plainConn, cfg, tls.HelloGolang)
+	}
+
 	errc := make(chan error, 2)
 	var timer *time.Timer // for canceling TLS handshake
 	if d := pconn.t.TLSHandshakeTimeout; d != 0 {
@@ -1577,7 +1592,7 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
 		if err != nil {
 			return nil, wrapErr(err)
 		}
-		if tc, ok := pconn.conn.(*tls.Conn); ok {
+		if tc, ok := pconn.conn.(*tls.UConn); ok {
 			// Handshake here, in case DialTLS didn't. TLSNextProto below
 			// depends on it for knowing the connection state.
 			if trace != nil && trace.TLSHandshakeStart != nil {
@@ -1728,7 +1743,7 @@ func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *pers
 
 	if s := pconn.tlsState; s != nil && s.NegotiatedProtocolIsMutual && s.NegotiatedProtocol != "" {
 		if next, ok := t.TLSNextProto[s.NegotiatedProtocol]; ok {
-			alt := next(cm.targetAddr, pconn.conn.(*tls.Conn))
+			alt := next(cm.targetAddr, pconn.conn.(*tls.UConn))
 			if e, ok := alt.(erringRoundTripper); ok {
 				// pconn.conn was closed by next (http2configureTransports.upgradeFn).
 				return nil, e.RoundTripErr()
@@ -2694,7 +2709,28 @@ func (pc *persistConn) roundTrip(req *transportRequest) (resp *Response, err err
 	// own value for Accept-Encoding. We only attempt to
 	// uncompress the gzip stream if we were the layer that
 	// requested it.
-	requestedGzip := true
+	requestedGzip := false
+	// if !pc.t.DisableCompression &&
+	// 	req.Header.Get("Accept-Encoding") == "" &&
+	// 	req.Header.get("accept-encoding") == "" &&
+	// 	req.Header.Get("Range") == "" &&
+	// 	req.Method != "HEAD" {
+	// 	// Request gzip, deflate, br if Accept-Encoding is
+	// 	// not specified
+	// 	//
+	// 	// Note that we don't request this for HEAD requests,
+	// 	// due to a bug in nginx:
+	// 	//   https://trac.nginx.org/nginx/ticket/358
+	// 	//   https://golang.org/issue/5522
+	// 	//
+	// 	// We don't request gzip if the request is for a range, since
+	// 	// auto-decoding a portion of a gzipped document will just fail
+	// 	// anyway. See https://golang.org/issue/8923
+	// 	requestedGzip = true
+	// 	req.extraHeaders().Set("Accept-Encoding", "gzip, deflate, br")
+	// } else if !pc.t.DisableCompression && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
+	// 	requestedGzip = true
+	// }
 
 	var continueCh chan struct{}
 	if req.ProtoAtLeast(1, 1) && req.Body != nil && req.expectsContinue() {

@@ -7,8 +7,9 @@
 package http2
 
 import (
-	"crypto/tls"
 	"sync"
+
+	tls "github.com/refraction-networking/utls"
 
 	http "github.com/AlienRecall/fhttp"
 )
@@ -152,7 +153,7 @@ func (c *dialCall) dial(addr string) {
 // This code decides which ones live or die.
 // The return value used is whether c was used.
 // c is never closed.
-func (p *clientConnPool) addConnIfNeeded(key string, t *Transport, c *tls.Conn) (used bool, err error) {
+func (p *clientConnPool) addConnIfNeeded(key string, t *Transport, c *tls.UConn) (used bool, err error) {
 	p.mu.Lock()
 	for _, cc := range p.conns[key] {
 		if cc.CanTakeNewRequest() {
@@ -188,7 +189,7 @@ type addConnCall struct {
 	err  error
 }
 
-func (c *addConnCall) run(t *Transport, key string, tc *tls.Conn) {
+func (c *addConnCall) run(t *Transport, key string, tc *tls.UConn) {
 	cc, err := t.NewClientConn(tc)
 
 	p := c.p

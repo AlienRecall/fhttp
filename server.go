@@ -10,7 +10,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +28,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	tls "github.com/refraction-networking/utls"
 
 	"golang.org/x/net/http/httpguts"
 )
@@ -497,8 +498,9 @@ type response struct {
 // prior to the headers being written. If the set of trailers is fixed
 // or known before the header is written, the normal Go trailers mechanism
 // is preferred:
-//    https://golang.org/pkg/net/http/#ResponseWriter
-//    https://golang.org/pkg/net/http/#example_ResponseWriter_trailers
+//
+//	https://golang.org/pkg/net/http/#ResponseWriter
+//	https://golang.org/pkg/net/http/#example_ResponseWriter_trailers
 const TrailerPrefix = "Trailer:"
 
 // finalTrailers is called after the Handler exits and returns a non-nil
@@ -1559,14 +1561,14 @@ func (w *response) bodyAllowed() bool {
 //
 // The Writers are wired together like:
 //
-// 1. *response (the ResponseWriter) ->
-// 2. (*response).w, a *bufio.Writer of bufferBeforeChunkingSize bytes
-// 3. chunkWriter.Writer (whose writeHeader finalizes Content-Length/Type)
-//    and which writes the chunk headers, if needed.
-// 4. conn.buf, a bufio.Writer of default (4kB) bytes, writing to ->
-// 5. checkConnErrorWriter{c}, which notes any non-nil error on Write
-//    and populates c.werr with it if so. but otherwise writes to:
-// 6. the rwc, the net.Conn.
+//  1. *response (the ResponseWriter) ->
+//  2. (*response).w, a *bufio.Writer of bufferBeforeChunkingSize bytes
+//  3. chunkWriter.Writer (whose writeHeader finalizes Content-Length/Type)
+//     and which writes the chunk headers, if needed.
+//  4. conn.buf, a bufio.Writer of default (4kB) bytes, writing to ->
+//  5. checkConnErrorWriter{c}, which notes any non-nil error on Write
+//     and populates c.werr with it if so. but otherwise writes to:
+//  6. the rwc, the net.Conn.
 //
 // TODO(bradfitz): short-circuit some of the buffering when the
 // initial header contains both a Content-Type and Content-Length.
@@ -1838,7 +1840,7 @@ func (c *conn) serve(ctx context.Context) {
 		}
 	}()
 
-	if tlsConn, ok := c.rwc.(*tls.Conn); ok {
+	if tlsConn, ok := c.rwc.(*tls.UConn); ok {
 		if d := c.server.ReadTimeout; d != 0 {
 			c.rwc.SetReadDeadline(time.Now().Add(d))
 		}
@@ -2094,7 +2096,7 @@ func Error(w ResponseWriter, error string, code int) {
 func NotFound(w ResponseWriter, r *Request) { Error(w, "404 page not found", StatusNotFound) }
 
 // NotFoundHandler returns a simple request handler
-// that replies to each request with a ``404 page not found'' reply.
+// that replies to each request with a “404 page not found” reply.
 func NotFoundHandler() Handler { return HandlerFunc(NotFound) }
 
 // StripPrefix returns a handler that serves HTTP requests by removing the
@@ -2387,7 +2389,7 @@ func (mux *ServeMux) shouldRedirectRLocked(host, path string) bool {
 // the pattern that will match after following the redirect.
 //
 // If there is no registered handler that applies to the request,
-// Handler returns a ``page not found'' handler and an empty pattern.
+// Handler returns a “page not found” handler and an empty pattern.
 func (mux *ServeMux) Handler(r *Request) (h Handler, pattern string) {
 
 	// CONNECT requests are not canonicalized.
@@ -2619,7 +2621,7 @@ type Server struct {
 	// automatically closed when the function returns.
 	// If TLSNextProto is not nil, HTTP/2 support is not enabled
 	// automatically.
-	TLSNextProto map[string]func(*Server, *tls.Conn, Handler)
+	TLSNextProto map[string]func(*Server, *tls.UConn, Handler)
 
 	// ConnState specifies an optional callback function that is
 	// called when a client connection changes state. See the
@@ -3443,7 +3445,7 @@ func (globalOptionsHandler) ServeHTTP(w ResponseWriter, r *Request) {
 // Requests come from ALPN protocol handlers.
 type initALPNRequest struct {
 	ctx context.Context
-	c   *tls.Conn
+	c   *tls.UConn
 	h   serverHandler
 }
 

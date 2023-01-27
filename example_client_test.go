@@ -1,7 +1,6 @@
 package http_test
 
 import (
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"flag"
@@ -11,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	tls "github.com/refraction-networking/utls"
 
 	http "github.com/AlienRecall/fhttp"
 	"github.com/AlienRecall/fhttp/http2"
